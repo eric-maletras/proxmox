@@ -1,0 +1,71 @@
+!/bin/bash
+################################################################################
+# Script : clone_student_permissions.sh - VERSION CORRIGÉE
+# Exclut TOUS les pools lors de la recopie
+################################################################################
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <utilisateur_source> <utilisateur_cible>"
+    echo "Exemple: $0 Pv2Etud03@pve Pv2Etud25@pve"
+    exit 1
+fi
+
+SOURCE_USER="$1"
+NEW_USER="$2"
+
+# Extraction du numéro d'étudiant
+SOURCE_NUM=$(echo "$SOURCE_USER" | grep -oP 'Etud\K\d+')
+NEW_NUM=$(echo "$NEW_USER" | grep -oP 'Etud\K\d+')
+
+if [[ -z "$SOURCE_NUM" || -z "$NEW_NUM" ]]; then
+    echo "Erreur : impossible d'extraire le numéro d'étudiant"
+    exit 1
+fi
+
+NEW_POOL="Pv2Etud${NEW_NUM}"
+
+echo "=========================================="
+echo "Source : $SOURCE_USER"
+echo "Cible  : $NEW_USER"
+echo "Pool cible : $NEW_POOL"
+echo "=========================================="
+echo ""
+
+# Installation de jq si nécessaire
+if ! command -v jq &> /dev/null; then
+    apt update && apt install -y jq
+fi
+
+# Recopie des ACL en EXCLUANT TOUS LES POOLS
+echo "=== Recopie des ACL (hors pools) ==="
+pvesh get /access/acl --output-format=json | \
+jq -r ".[] | select(.ugid == \"$SOURCE_USER\" and .type == \"user\") | \"\(.path)|\(.roleid)\"" | \
+while IFS='|' read -r path role; do
+    # Exclure TOUS les chemins commençant par /pool/
+    if [[ "$path" == /pool/* ]]; then
+        echo "  ✗ Ignoré : $path (pool)"
+    elif [[ -n "$path" && -n "$role" ]]; then
+        echo "  ✓ $role sur $path"
+        pveum acl modify "$path" --users "$NEW_USER" --roles "$role"
+    fi
+done
+
+# Configuration du pool cible uniquement
+echo ""
+echo "=== Configuration du pool cible ==="
+if pvesh get /pools --output-format=json | jq -e ".[] | select(.poolid == \"$NEW_POOL\")" > /dev/null 2>&1; then
+    echo "  ✓ Le pool $NEW_POOL existe"
+else
+    echo "  → Création du pool $NEW_POOL"
+    pvesh create /pools --poolid "$NEW_POOL" --comment "Pool de $NEW_USER"
+fi
+
+echo "  → Ajout des droits PVEVMAdmin sur $NEW_POOL"
+pveum acl modify "/pool/$NEW_POOL" --users "$NEW_USER" --roles PVEAdmin --propagate 1
+
+echo ""
+echo "=========================================="
+echo "✓ Configuration terminée"
+echo "=========================================="
+echo ""
+pveum user permissions "$NEW_USER"
