@@ -20,6 +20,10 @@
 # après sauvegarde de /etc/network/interfaces. Le script refuse de démarrer
 # si des modifications réseau sont déjà en attente (interfaces.new).
 #
+# Mot de passe par défaut (Entrée à la question) : fichier /root/.proxmox_pass,
+# lisible par root seul, jamais dans le dépôt :
+#   printf '%s' 'motdepasse' > /root/.proxmox_pass && chmod 600 /root/.proxmox_pass
+#
 # Réglages modifiables sans toucher au script :
 #   GROUP=etudiants USER_PREFIX=tech_ POOL_PREFIX=pool_ BRIDGE_PREFIX=vmbr REALM=pve
 ################################################################################
@@ -37,6 +41,7 @@ USER_PREFIX="${USER_PREFIX:-tech_}"
 POOL_PREFIX="${POOL_PREFIX:-pool_}"
 BRIDGE_PREFIX="${BRIDGE_PREFIX:-vmbr}"
 REALM="${REALM:-pve}"
+PASS_FILE="${PASS_FILE:-/root/.proxmox_pass}"
 NODE="$(hostname)"
 
 [ "$(id -u)" -eq 0 ] || { echo "❌ À lancer en root sur le nœud Proxmox"; exit 1; }
@@ -110,8 +115,17 @@ if [ ${#NUMS[@]} -eq 0 ]; then
     exit 0
 fi
 
-read -sp "Mot de passe commun : " PASSWORD; echo
-read -sp "Confirmer : " PASSWORD_CONFIRM; echo
+if [ -s "$PASS_FILE" ]; then
+    read -sp "Mot de passe commun (Entrée = celui de $PASS_FILE) : " PASSWORD; echo
+    if [[ -z "$PASSWORD" ]]; then
+        PASSWORD=$(<"$PASS_FILE"); PASSWORD_CONFIRM="$PASSWORD"
+    else
+        read -sp "Confirmer : " PASSWORD_CONFIRM; echo
+    fi
+else
+    read -sp "Mot de passe commun : " PASSWORD; echo
+    read -sp "Confirmer : " PASSWORD_CONFIRM; echo
+fi
 if [[ -z "$PASSWORD" || "$PASSWORD" != "$PASSWORD_CONFIRM" ]]; then
     echo "❌ Mots de passe vides ou différents"
     exit 1
