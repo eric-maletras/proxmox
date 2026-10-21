@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 ################################################################################
 # Script : clone_student_permissions.sh - VERSION CORRIGÉE
 # Exclut TOUS les pools lors de la recopie
